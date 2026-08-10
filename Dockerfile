@@ -21,14 +21,24 @@
 #            docker images day12-agent:prod     # xem dung lượng
 # ═══════════════════════════════════════════════════════════════════
 
-FROM python:3.11
+FROM python:3.11-slim AS builder
 
+WORKDIR /build
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+FROM python:3.11-slim AS runtime
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /app
-
-COPY . .
-
-RUN pip install -r requirements.txt
-
+COPY --from=builder /usr/local /usr/local
+COPY app ./app
+COPY utils ./utils
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser && chown -R appuser:appgroup /app
+USER appuser
 EXPOSE 8000
+HEALTHCHECK CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8000') + '/health')"
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
